@@ -1,7 +1,7 @@
 use confy::ConfyError;
 use serde::{Deserialize, Serialize};
 
-use crate::app::App;
+use crate::app::Context;
 
 pub static APP_NAME: &str = "tinbox";
 pub static CONFIG_FILE: &str = "login";
@@ -19,10 +19,10 @@ impl Config {
     pub fn load() -> Result<Config, ConfyError> {
         confy::load::<Config>(APP_NAME, CONFIG_FILE)
     }
-    pub fn store(self) -> Result<(), ConfyError> {
-        confy::store::<Config>(APP_NAME, CONFIG_FILE, self)
-    }
-    pub fn apply(&self, app: &mut App) {
-        app.config = self.to_owned();
+    // pub fn store(self) -> Result<(), ConfyError> {
+    //     confy::store::<Config>(APP_NAME, CONFIG_FILE, self)
+    // }
+    pub fn apply(&self, ctx: &mut Context) {
+        ctx.config = self.to_owned();
     }
 }

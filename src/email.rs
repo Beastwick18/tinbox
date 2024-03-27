@@ -3,7 +3,7 @@ use std::{error::Error, net::TcpStream};
 use imap::Session;
 use native_tls::TlsStream;
 
-use crate::config::Config;
+use crate::{config::Config, widget::emails::EmailEntry};
 
 pub type TlsSession = Session<TlsStream<TcpStream>>;
 
@@ -16,13 +16,13 @@ pub fn new_session(conf: Config) -> Result<TlsSession, Box<dyn Error>> {
     let x = client
         .login(conf.username, conf.password)
         .map_err(|e| e.0)?;
-    return Ok(x);
+    Ok(x)
 }
 
-pub fn top_messages<'a>(
+pub fn top_messages(
     session: &mut TlsSession,
     n: u32,
-) -> imap::error::Result<Option<Vec<String>>> {
+) -> imap::error::Result<Option<Vec<EmailEntry>>> {
     let mb = session.select("INBOX")?;
     let exists = mb.exists;
 
@@ -40,13 +40,25 @@ pub fn top_messages<'a>(
                 let msg = mail_parser::MessageParser::new()
                     .parse(body.as_bytes())
                     .expect("Failed to parse");
-                msg.subject().map(|s| s.to_owned()).unwrap_or_default()
+                let from = msg
+                    .from()
+                    .and_then(|f| f.first())
+                    .and_then(|f| f.name.clone())
+                    .map(|n| n.to_string())
+                    .unwrap_or_default();
+                let subject = msg.subject().map(|s| s.to_owned()).unwrap_or_default();
+                let date = "Today".to_owned();
+                EmailEntry {
+                    from,
+                    subject,
+                    date,
+                }
             })
             .collect(),
     ))
 }
 
-pub fn get_html<'a>(session: &mut TlsSession, n: u32) -> imap::error::Result<Option<String>> {
+pub fn get_html(session: &mut TlsSession, n: u32) -> imap::error::Result<Option<String>> {
     let mb = session.select("INBOX")?;
     let exists = mb.exists;
 
@@ -71,7 +83,7 @@ pub fn get_html<'a>(session: &mut TlsSession, n: u32) -> imap::error::Result<Opt
     ))
 }
 
-fn list_inboxes(s: &mut TlsSession) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn list_inboxes(s: &mut TlsSession) -> Result<Vec<String>, Box<dyn Error>> {
     let l = s.list(None, Some("*"))?;
     let inboxes = l.iter().map(|i| i.name().to_owned()).collect();
     Ok(inboxes)

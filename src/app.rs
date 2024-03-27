@@ -10,17 +10,20 @@ use ratatui::{
 use crate::{
     config::Config,
     email::{self, new_session, TlsSession},
-    widget::{emails::Email, preview::Preview, Widget},
+    widget::{Focusable, Widget, Widgets},
 };
 
+#[derive(Clone, PartialEq, Eq)]
 pub enum LoadType {
     FetchSubjects,
     FetchPreview,
+    FetchInboxes,
     Login,
 }
 
+#[derive(Clone, PartialEq, Eq)]
 pub enum Mode {
-    ShowEmail,
+    Focus(Focusable),
     Loading(LoadType),
     Error(String),
 }
@@ -35,21 +38,29 @@ impl Default for Mode {
 pub struct App {
     pub widgets: Widgets,
     should_quit: bool,
-    pub config: Config,
-    pub mode: Mode,
-    session: Option<TlsSession>,
-    errors: VecDeque<String>,
 }
 
 #[derive(Default)]
-pub struct Widgets {
-    preview: Preview,
-    email: Email,
-    // sidebar: Sidebar,
+pub struct Context {
+    pub mode: Mode,
+    pub config: Config,
+    pub errors: VecDeque<String>,
+    session: Option<TlsSession>,
+}
+
+impl Context {
+    pub fn show_error<S: ToString>(&mut self, err: S) {
+        self.errors.push_front(err.to_string());
+    }
 }
 
 impl App {
-    pub fn draw(&mut self, f: &mut Frame) {
+    pub fn draw(&mut self, f: &mut Frame, ctx: &mut Context) {
+        let layout_vert = Layout::new(
+            Direction::Vertical,
+            [Constraint::Length(3), Constraint::Min(1)],
+        )
+        .split(f.size());
         let layout = Layout::new(
             Direction::Horizontal,
             [
@@ -58,108 +69,140 @@ impl App {
                 Constraint::Min(50),
             ],
         )
-        .split(f.size());
+        .split(layout_vert[1]);
 
-        self.widgets.email.draw(f, layout[1]);
-        self.widgets.preview.draw(f, layout[2]);
+        self.widgets.search.draw(f, layout_vert[0], ctx);
+        self.widgets.sidebar.draw(f, layout[0], ctx);
+        self.widgets.email.draw(f, layout[1], ctx);
+        self.widgets.preview.draw(f, layout[2], ctx);
     }
 
     pub async fn run_app<B: Backend>(
         &mut self,
         terminal: &mut Terminal<B>,
     ) -> Result<(), Box<dyn Error>> {
+        let mut ctx = Context::default();
         let conf = match Config::load() {
             Ok(c) => c,
             Err(e) => return Err(e.into()),
         };
-        conf.apply(self);
-        self.mode = Mode::Loading(LoadType::Login);
+        conf.apply(&mut ctx);
+        ctx.mode = Mode::Loading(LoadType::Login);
         while !self.should_quit {
-            if !self.errors.is_empty() {
-                self.mode = Mode::Error(self.errors.pop_front().unwrap_or_default());
+            if !ctx.errors.is_empty() {
+                ctx.mode = Mode::Error(ctx.errors.pop_front().unwrap_or_default());
             }
 
             // get_help(app, w);
-            terminal.draw(|f| self.draw(f))?;
-            if let Mode::Loading(load) = &self.mode {
+            terminal.draw(|f| self.draw(f, &mut ctx))?;
+            if let Mode::Loading(load) = &ctx.mode {
+                let load = load.clone();
+                ctx.mode = Mode::Focus(Focusable::Subjects);
                 match load {
                     LoadType::FetchSubjects => {
-                        self.mode = Mode::ShowEmail;
-                        let mut session = match &mut self.session {
+                        let session = match &mut ctx.session {
                             Some(s) => s,
                             None => {
-                                self.show_error("Not logged in");
-                                self.mode = Mode::ShowEmail;
+                                ctx.show_error("Not logged in");
                                 continue;
                             }
                         };
-                        let subs = match email::top_messages(&mut session, 10) {
+                        ctx.mode = Mode::Focus(Focusable::Subjects);
+                        let subs = match email::top_messages(session, 100) {
                             Ok(body) => body,
-                            Err(e) => return Err(e.into()),
+                            Err(e) => {
+                                ctx.show_error(e);
+                                continue;
+                            }
                         };
                         let subs = match subs {
                             Some(body) => body,
-                            None => vec!["No body :)".to_owned()],
+                            None => vec![],
                         };
-                        self.mode = Mode::Loading(LoadType::FetchPreview);
-                        self.widgets.email.set_subjects(subs);
+                        self.widgets.email.set_entries(subs);
                     }
                     LoadType::FetchPreview => {
-                        self.mode = Mode::ShowEmail;
-                        let mut session = match &mut self.session {
+                        let session = match &mut ctx.session {
                             Some(s) => s,
                             None => {
-                                self.show_error("Not logged in");
+                                ctx.show_error("Not logged in");
                                 continue;
                             }
                         };
-                        let text = match email::get_html(&mut session, self.widgets.email.selected)
-                        {
+                        ctx.mode = Mode::Focus(Focusable::Preview);
+                        let text = match email::get_html(
+                            session,
+                            self.widgets
+                                .email
+                                .table
+                                .state
+                                .selected()
+                                .unwrap_or_default() as u32,
+                        ) {
                             Ok(body) => body,
-                            Err(e) => return Err(e.into()),
-                        };
-                        let text = match text {
-                            Some(body) => body,
-                            None => "No body :)".to_owned(),
-                        };
-                        self.widgets.preview.set_text(text);
-                    }
-                    LoadType::Login => {
-                        self.mode = Mode::ShowEmail;
-                        if let Some(s) = &mut self.session {
-                            if let Err(e) = s.logout() {
-                                self.show_error(e.to_string());
-                                self.session = None;
+                            Err(e) => {
+                                ctx.show_error(e);
                                 continue;
                             }
                         }
-                        let s = match new_session(self.config.clone()) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                self.show_error(e.to_string());
+                        .unwrap_or_default();
+                        self.widgets.preview.set_content(text);
+                    }
+                    LoadType::FetchInboxes => {
+                        let session = match &mut ctx.session {
+                            Some(s) => s,
+                            None => {
+                                ctx.show_error("Not logged in");
                                 continue;
                             }
                         };
-                        self.session = Some(s);
-                        self.mode = Mode::Loading(LoadType::FetchSubjects);
+                        ctx.mode = Mode::Focus(Focusable::Subjects);
+                        let inboxes = match email::list_inboxes(session) {
+                            Ok(body) => body,
+                            Err(e) => {
+                                ctx.show_error(e);
+                                continue;
+                            }
+                        };
+                        ctx.mode = Mode::Loading(LoadType::FetchSubjects);
+                        self.widgets.sidebar.set_inboxes(inboxes);
+                    }
+                    LoadType::Login => {
+                        ctx.mode = Mode::Focus(Focusable::Subjects);
+                        if let Some(s) = &mut ctx.session {
+                            if let Err(e) = s.logout() {
+                                ctx.show_error(e);
+                                ctx.session = None;
+                                continue;
+                            }
+                        }
+                        let s = match new_session(ctx.config.clone()) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                ctx.show_error(e.to_string());
+                                continue;
+                            }
+                        };
+                        ctx.session = Some(s);
+                        ctx.mode = Mode::Loading(LoadType::FetchInboxes);
                     }
                 }
                 continue;
             }
 
             let evt = event::read()?;
-            self.on(evt.clone());
-            self.on_widgets(evt);
+            self.on(evt.clone(), &mut ctx);
+            self.widgets.on(evt, &mut ctx);
         }
 
-        if let Some(session) = &mut self.session {
+        if let Some(session) = &mut ctx.session {
             session.logout()?;
         }
 
         Ok(())
     }
 
-    fn on(&mut self, e: Event) {
+    fn on(&mut self, e: Event, ctx: &mut Context) {
         if let Event::Key(KeyEvent {
             code,
             kind: KeyEventKind::Press,
@@ -170,22 +213,35 @@ impl App {
                 KeyCode::Char('q') => {
                     self.should_quit = true;
                 }
+                KeyCode::Char('l') | KeyCode::Tab => {
+                    if let Mode::Focus(f) = ctx.mode.clone() {
+                        ctx.mode = Mode::Focus(match f {
+                            Focusable::Search => Focusable::Subjects,
+                            Focusable::Sidebar => Focusable::Subjects,
+                            Focusable::Subjects => Focusable::Preview,
+                            Focusable::Preview => Focusable::Sidebar,
+                        });
+                    }
+                }
+                KeyCode::Char('h') | KeyCode::BackTab => {
+                    if let Mode::Focus(f) = ctx.mode.clone() {
+                        ctx.mode = Mode::Focus(match f {
+                            Focusable::Search => Focusable::Subjects,
+                            Focusable::Subjects => Focusable::Sidebar,
+                            Focusable::Preview => Focusable::Subjects,
+                            Focusable::Sidebar => Focusable::Preview,
+                        });
+                    }
+                }
+                KeyCode::Char('/') => {
+                    if let Mode::Focus(f) = ctx.mode.clone() {
+                        if f != Focusable::Search {
+                            ctx.mode = Mode::Focus(Focusable::Search);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
-    }
-
-    fn on_widgets(&mut self, e: Event) {
-        let new_mode = match self.mode {
-            Mode::ShowEmail => self.widgets.email.on(e),
-            _ => None,
-        };
-        if let Some(m) = new_mode {
-            self.mode = m;
-        }
-    }
-
-    pub fn show_error<S: ToString>(&mut self, err: S) {
-        self.errors.push_front(err.to_string());
     }
 }
