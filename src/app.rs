@@ -89,9 +89,9 @@ impl App {
         conf.apply(&mut ctx);
         ctx.mode = Mode::Loading(LoadType::Login);
         while !self.should_quit {
-            if !ctx.errors.is_empty() {
-                ctx.mode = Mode::Error(ctx.errors.pop_front().unwrap_or_default());
-            }
+            // if !ctx.errors.is_empty() {
+            //     ctx.mode = Mode::Error(ctx.errors.pop_front().unwrap_or_default());
+            // }
 
             // get_help(app, w);
             terminal.draw(|f| self.draw(f, &mut ctx))?;
@@ -108,7 +108,22 @@ impl App {
                             }
                         };
                         ctx.mode = Mode::Focus(Focusable::Subjects);
-                        let subs = match email::top_messages(session, 100) {
+                        let inbox_idx = self
+                            .widgets
+                            .sidebar
+                            .table
+                            .state
+                            .selected()
+                            .unwrap_or_default();
+                        let inbox = self
+                            .widgets
+                            .sidebar
+                            .table
+                            .items
+                            .get(inbox_idx)
+                            .map(|i| i.to_owned())
+                            .unwrap_or("INBOX".to_owned());
+                        let subs = match email::top_messages(session, inbox, 100) {
                             Ok(body) => body,
                             Err(e) => {
                                 ctx.show_error(e);
@@ -130,8 +145,24 @@ impl App {
                             }
                         };
                         ctx.mode = Mode::Focus(Focusable::Preview);
+                        let inbox_idx = self
+                            .widgets
+                            .sidebar
+                            .table
+                            .state
+                            .selected()
+                            .unwrap_or_default();
+                        let inbox = self
+                            .widgets
+                            .sidebar
+                            .table
+                            .items
+                            .get(inbox_idx)
+                            .map(|i| i.to_owned())
+                            .unwrap_or("INBOX".to_owned());
                         let text = match email::get_html(
                             session,
+                            inbox,
                             self.widgets
                                 .email
                                 .table

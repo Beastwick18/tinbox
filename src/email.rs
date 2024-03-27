@@ -1,7 +1,8 @@
-use std::{error::Error, net::TcpStream};
+use std::{cmp, error::Error, net::TcpStream};
 
 use imap::Session;
 use native_tls::TlsStream;
+use unicode_width::UnicodeWidthChar;
 
 use crate::{config::Config, widget::emails::EmailEntry};
 
@@ -21,12 +22,13 @@ pub fn new_session(conf: Config) -> Result<TlsSession, Box<dyn Error>> {
 
 pub fn top_messages(
     session: &mut TlsSession,
+    inbox: String,
     n: u32,
 ) -> imap::error::Result<Option<Vec<EmailEntry>>> {
-    let mb = session.select("INBOX")?;
-    let exists = mb.exists;
+    let mb = session.select(inbox)?;
+    let from = cmp::max(mb.exists, n) - n;
 
-    let query = format!("{}:*", exists - n);
+    let query = format!("{}:*", from);
     let messages = session.fetch(query, "RFC822")?;
     Ok(Some(
         messages
@@ -34,19 +36,21 @@ pub fn top_messages(
             .rev()
             .map(|message| {
                 let body = message.body().expect("message did not have a body!");
-                let body = std::str::from_utf8(body)
-                    .expect("message was not valid utf-8")
-                    .to_string();
+                let body = String::from_utf8_lossy(body).to_string();
                 let msg = mail_parser::MessageParser::new()
                     .parse(body.as_bytes())
                     .expect("Failed to parse");
                 let from = msg
                     .from()
                     .and_then(|f| f.first())
-                    .and_then(|f| f.name.clone())
+                    .and_then(|f| f.name.clone().or(f.address.clone()))
                     .map(|n| n.to_string())
                     .unwrap_or_default();
                 let subject = msg.subject().map(|s| s.to_owned()).unwrap_or_default();
+                let subject = subject
+                    .chars()
+                    .filter(|c| c.width().is_some_and(|c| c != 0)) // Remove 0 width chars
+                    .collect();
                 let date = "Today".to_owned();
                 EmailEntry {
                     from,
@@ -58,8 +62,12 @@ pub fn top_messages(
     ))
 }
 
-pub fn get_html(session: &mut TlsSession, n: u32) -> imap::error::Result<Option<String>> {
-    let mb = session.select("INBOX")?;
+pub fn get_html(
+    session: &mut TlsSession,
+    inbox: String,
+    n: u32,
+) -> imap::error::Result<Option<String>> {
+    let mb = session.select(inbox)?;
     let exists = mb.exists;
 
     let query = format!("{}", exists - n);
@@ -85,6 +93,6 @@ pub fn get_html(session: &mut TlsSession, n: u32) -> imap::error::Result<Option<
 
 pub fn list_inboxes(s: &mut TlsSession) -> Result<Vec<String>, Box<dyn Error>> {
     let l = s.list(None, Some("*"))?;
-    let inboxes = l.iter().map(|i| i.name().to_owned()).collect();
+    let inboxes = l.iter().map(|i| i.name().trim().to_owned()).collect();
     Ok(inboxes)
 }

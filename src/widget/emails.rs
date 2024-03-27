@@ -1,11 +1,8 @@
-use std::cmp;
-
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style, Stylize},
     symbols::line,
-    text::Line,
     widgets::{Block, Borders, Paragraph, Row, Table},
     Frame,
 };
@@ -28,7 +25,6 @@ pub struct Emails {
 impl Default for Emails {
     fn default() -> Self {
         Emails {
-            // selected: 1,
             table: StatefulTable::with_items(vec![]),
         }
     }
@@ -43,16 +39,6 @@ impl Emails {
 
 impl Widget for Emails {
     fn draw(&mut self, f: &mut Frame, area: Rect, ctx: &mut Context) {
-        // let lines = self
-        //     .subjects
-        //     .iter()
-        //     .enumerate()
-        //     .map(|(i, l)| match i == self.selected as usize {
-        //         true => Line::from(l.to_owned()).style(Style::new().bg(Color::DarkGray)),
-        //         false => Line::from(l.to_owned()),
-        //     })
-        //     .collect::<Vec<Line>>();
-        let border = focus_border(ctx, Focusable::Subjects);
         let title = match ctx.mode == Mode::Loading(LoadType::FetchSubjects) {
             true => "Loading...".to_owned(),
             false => format!("Emails: {}", ctx.config.username),
