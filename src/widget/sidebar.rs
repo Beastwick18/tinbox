@@ -1,11 +1,8 @@
-use std::cmp;
-
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style},
-    text::Line,
-    widgets::{BorderType, Borders, Paragraph, Row, Table},
+    widgets::{BorderType, Borders, Row, Table},
     Frame,
 };
 
@@ -20,7 +17,7 @@ pub struct Sidebar {
 impl Default for Sidebar {
     fn default() -> Self {
         Sidebar {
-            table: StatefulTable::with_items(vec![]),
+            table: StatefulTable::new(),
         }
     }
 }
@@ -28,7 +25,7 @@ impl Default for Sidebar {
 impl Sidebar {
     pub fn set_inboxes(&mut self, cats: Vec<String>) {
         self.table.items = cats;
-        self.table.select(0);
+        self.table.select(1);
     }
 }
 
@@ -81,7 +78,7 @@ impl Widget for Sidebar {
                     self.table.next(1);
                 }
                 KeyCode::Enter => {
-                    return Some(Mode::Loading(LoadType::FetchSubjects));
+                    return Some(Mode::Loading(LoadType::FetchEmails));
                 }
                 _ => {}
             }

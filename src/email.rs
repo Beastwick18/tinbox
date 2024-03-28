@@ -1,6 +1,7 @@
 use std::{cmp, error::Error, net::TcpStream};
 
 use imap::Session;
+use mail_parser::DateTime;
 use native_tls::TlsStream;
 use unicode_width::UnicodeWidthChar;
 
@@ -51,7 +52,25 @@ pub fn top_messages(
                     .chars()
                     .filter(|c| c.width().is_some_and(|c| c != 0)) // Remove 0 width chars
                     .collect();
-                let date = "Today".to_owned();
+                // let date = msg.date().map(|d| d.to_rfc822()).unwrap_or_default();
+                let date = "Mon 12:12 PM".to_owned();
+                let date = msg.keywords().as_text().unwrap_or_default().to_string();
+                // let prio = msg
+                //     .header_values("X-Priority")
+                //     .next()
+                //     .and_then(|x| x.as_text())
+                //     .unwrap_or_default()
+                //     .to_owned();
+                // let date = prio;
+                // let prio = msg
+                //     .headers()
+                //     .iter()
+                //     .rev()
+                //     .find(|h| h.name.to_string().to_lowercase() == "x-priority");
+                // let date = prio
+                //     .and_then(|p| p.value().as_text())
+                //     .map(|x| x.to_owned())
+                //     .unwrap_or_default();
                 EmailEntry {
                     from,
                     subject,

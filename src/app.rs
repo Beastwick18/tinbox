@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum LoadType {
-    FetchSubjects,
+    FetchEmails,
     FetchPreview,
     FetchInboxes,
     Login,
@@ -30,7 +30,7 @@ pub enum Mode {
 
 impl Default for Mode {
     fn default() -> Self {
-        Mode::Loading(LoadType::FetchSubjects)
+        Mode::Loading(LoadType::FetchEmails)
     }
 }
 
@@ -89,17 +89,17 @@ impl App {
         conf.apply(&mut ctx);
         ctx.mode = Mode::Loading(LoadType::Login);
         while !self.should_quit {
-            // if !ctx.errors.is_empty() {
-            //     ctx.mode = Mode::Error(ctx.errors.pop_front().unwrap_or_default());
-            // }
+            if !ctx.errors.is_empty() {
+                ctx.mode = Mode::Error(ctx.errors.pop_front().unwrap_or_default());
+            }
 
             // get_help(app, w);
             terminal.draw(|f| self.draw(f, &mut ctx))?;
             if let Mode::Loading(load) = &ctx.mode {
                 let load = load.clone();
-                ctx.mode = Mode::Focus(Focusable::Subjects);
+                ctx.mode = Mode::Focus(Focusable::Emails);
                 match load {
-                    LoadType::FetchSubjects => {
+                    LoadType::FetchEmails => {
                         let session = match &mut ctx.session {
                             Some(s) => s,
                             None => {
@@ -107,7 +107,7 @@ impl App {
                                 continue;
                             }
                         };
-                        ctx.mode = Mode::Focus(Focusable::Subjects);
+                        ctx.mode = Mode::Focus(Focusable::Emails);
                         let inbox_idx = self
                             .widgets
                             .sidebar
@@ -187,7 +187,7 @@ impl App {
                                 continue;
                             }
                         };
-                        ctx.mode = Mode::Focus(Focusable::Subjects);
+                        ctx.mode = Mode::Focus(Focusable::Emails);
                         let inboxes = match email::list_inboxes(session) {
                             Ok(body) => body,
                             Err(e) => {
@@ -195,11 +195,11 @@ impl App {
                                 continue;
                             }
                         };
-                        ctx.mode = Mode::Loading(LoadType::FetchSubjects);
+                        ctx.mode = Mode::Loading(LoadType::FetchEmails);
                         self.widgets.sidebar.set_inboxes(inboxes);
                     }
                     LoadType::Login => {
-                        ctx.mode = Mode::Focus(Focusable::Subjects);
+                        ctx.mode = Mode::Focus(Focusable::Emails);
                         if let Some(s) = &mut ctx.session {
                             if let Err(e) = s.logout() {
                                 ctx.show_error(e);
@@ -247,9 +247,9 @@ impl App {
                 KeyCode::Char('l') | KeyCode::Tab => {
                     if let Mode::Focus(f) = ctx.mode.clone() {
                         ctx.mode = Mode::Focus(match f {
-                            Focusable::Search => Focusable::Subjects,
-                            Focusable::Sidebar => Focusable::Subjects,
-                            Focusable::Subjects => Focusable::Preview,
+                            Focusable::Search => Focusable::Emails,
+                            Focusable::Sidebar => Focusable::Emails,
+                            Focusable::Emails => Focusable::Preview,
                             Focusable::Preview => Focusable::Sidebar,
                         });
                     }
@@ -257,9 +257,9 @@ impl App {
                 KeyCode::Char('h') | KeyCode::BackTab => {
                     if let Mode::Focus(f) = ctx.mode.clone() {
                         ctx.mode = Mode::Focus(match f {
-                            Focusable::Search => Focusable::Subjects,
-                            Focusable::Subjects => Focusable::Sidebar,
-                            Focusable::Preview => Focusable::Subjects,
+                            Focusable::Search => Focusable::Emails,
+                            Focusable::Emails => Focusable::Sidebar,
+                            Focusable::Preview => Focusable::Emails,
                             Focusable::Sidebar => Focusable::Preview,
                         });
                     }

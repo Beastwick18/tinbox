@@ -1,11 +1,10 @@
-use std::{cmp, slice::Iter};
+use std::slice::Iter;
 
 use crossterm::event::Event;
 use ratatui::{
-    buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize as _},
-    widgets::{Block, Borders, Clear, ScrollbarState, TableState, Widget as _},
+    layout::Rect,
+    style::{Style, Stylize as _},
+    widgets::{Block, Borders, ScrollbarState, TableState},
     Frame,
 };
 
@@ -22,7 +21,7 @@ pub mod sidebar;
 pub enum Focusable {
     Search,
     Sidebar,
-    Subjects,
+    Emails,
     Preview,
 }
 
@@ -39,7 +38,7 @@ impl Widgets {
         let new_mode = match ctx.mode.clone() {
             Mode::Focus(f) => match f {
                 Focusable::Search => self.search.on(e),
-                Focusable::Subjects => self.email.on(e),
+                Focusable::Emails => self.email.on(e),
                 Focusable::Sidebar => self.sidebar.on(e),
                 Focusable::Preview => self.preview.on(e),
             },
@@ -106,25 +105,31 @@ pub struct StatefulTable<T> {
 }
 
 impl<T> StatefulTable<T> {
-    pub fn with_items(items: Vec<T>) -> StatefulTable<T> {
+    pub fn new() -> StatefulTable<T> {
         StatefulTable {
             state: TableState::new().with_selected(Some(0)),
-            scrollbar_state: ScrollbarState::new(items.len()),
-            items,
+            scrollbar_state: ScrollbarState::new(0),
+            items: vec![],
         }
     }
 
-    pub fn next_wrap(&mut self, amt: isize) {
-        if self.items.is_empty() {
-            return;
-        }
-        let i = match self.state.selected() {
-            Some(i) => (i as isize + amt).rem_euclid(self.items.len() as isize),
-            None => 0,
-        };
-        self.state.select(Some(i as usize));
-        self.scrollbar_state = self.scrollbar_state.position(i as usize);
+    pub fn with_items(&mut self, items: Vec<T>) {
+        self.state = TableState::new().with_selected(Some(0));
+        self.scrollbar_state = ScrollbarState::new(items.len());
+        self.items = items;
     }
+
+    // pub fn next_wrap(&mut self, amt: isize) {
+    //     if self.items.is_empty() {
+    //         return;
+    //     }
+    //     let i = match self.state.selected() {
+    //         Some(i) => (i as isize + amt).rem_euclid(self.items.len() as isize),
+    //         None => 0,
+    //     };
+    //     self.state.select(Some(i as usize));
+    //     self.scrollbar_state = self.scrollbar_state.position(i as usize);
+    // }
 
     pub fn next(&mut self, amt: isize) {
         if self.items.is_empty() {
@@ -137,6 +142,23 @@ impl<T> StatefulTable<T> {
         let idx = i.max(0).min(self.items.len() as isize - 1) as usize;
         self.state.select(Some(idx));
         self.scrollbar_state = self.scrollbar_state.position(idx);
+    }
+
+    pub fn first(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        self.state.select(Some(0));
+        self.scrollbar_state = self.scrollbar_state.position(0);
+    }
+
+    pub fn last(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let len = self.items.len() - 1;
+        self.state.select(Some(len));
+        self.scrollbar_state = self.scrollbar_state.position(len);
     }
 
     pub fn select(&mut self, idx: usize) {

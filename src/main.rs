@@ -3,6 +3,7 @@ use std::{env, io::stdout};
 use app::App;
 use crossterm::{
     cursor::SetCursorStyle,
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -28,6 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     stdout().execute(SetCursorStyle::SteadyBar)?;
+    stdout().execute(EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
 
@@ -36,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.run_app(&mut terminal).await?;
 
     disable_raw_mode()?;
+    stdout().execute(DisableMouseCapture)?;
     stdout().execute(SetCursorStyle::DefaultUserShape)?;
     stdout().execute(LeaveAlternateScreen)?;
     terminal.show_cursor()?;
